@@ -57,6 +57,8 @@ def main():
     exp_name = CONFIG['experiment_name']
     feature_cols = CONFIG['feature_cols']
     output_dir = CONFIG['output_dir']
+
+    os.makedirs(output_dir, exist_ok=True)
     
     print("=" * 60)
     print(f"EXPERIMENT: {exp_name}")
