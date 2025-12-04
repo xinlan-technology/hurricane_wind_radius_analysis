@@ -14,7 +14,7 @@ This repository provides a deep learning framework for predicting hurricane wind
 │   └── visualization.py         # Plotting functions
 ├── data/
 │   └── df_34out.csv             # Hurricane dataset
-├── outputs/                      # Model outputs and figures (generated)
+├── outputs/                     # Model outputs and figures
 ├── run_all_experiments.py       # Main script: runs all 3 experiments
 ├── requirements.txt
 └── README.md
@@ -69,18 +69,6 @@ python run_all_experiments.py --groups group2_obs group3_combined
 python run_all_experiments.py --data_path /path/to/data.csv --output_dir /path/to/output/
 ```
 
-### Google Colab Usage
-```python
-# Mount Google Drive
-from google.colab import drive
-drive.mount('/content/drive')
-
-# Run experiments
-!python run_all_experiments.py \
-    --data_path '/content/drive/MyDrive/Hurricane Data/df_34out.csv' \
-    --output_dir '/content/drive/MyDrive/Hurricane Data/'
-```
-
 ## 📊 Output Structure
 
 After execution, results will be saved in `outputs/`:
@@ -122,24 +110,6 @@ After execution, results will be saved in `outputs/`:
 | Max Epochs | 400 |
 | Early Stopping Patience | 30 |
 | Random Seed | 42 |
-
-## 🔄 Model Deployment
-
-To use a trained model for prediction on new data:
-```python
-import torch
-import joblib
-from modules import LSTMRegressor
-
-# Load scaler and model
-scaler = joblib.load('outputs/scaler_group1_era5.pkl')
-model = LSTMRegressor(input_size=23, hidden_size=256, num_layers=2, dropout=0.0)
-model.load_state_dict(torch.load('outputs/model_group1_era5.pth'))
-model.eval()
-
-# Preprocess new data
-X_new_scaled = scaler.transform(X_new)
-```
 
 ## 📈 Applications
 
