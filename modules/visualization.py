@@ -2,21 +2,54 @@
 Visualization Module
 - Scatter plot for actual vs predicted values
 - SHAP bar plot for global feature importance
-- SHAP heatmap for temporal feature importance
 """
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy import stats
 from typing import Dict
+
+# Feature name to label mapping
+FEATURE_LABELS = {
+    # Observation features
+    'lat': 'Lat',
+    'lon': 'Lon',
+    'dist2land': 'D2L',
+    'usa_wind': 'MSW_O',
+    'usa_sshs': 'SSHS',
+    'storm_speed': 'Spd',
+    'storm_dir': 'Dir',
+
+    # ERA5 features
+    'uv_max': 'MSW_E',
+    'rmax': 'Rmax',
+    'rmax_avg': 'Rmax_avg',
+    'rmax_avg_adj': 'Rmax_adj',
+    'rmax_1': 'Rmax_1',
+    'rmax_2': 'Rmax_2',
+    'rmax_3': 'Rmax_3',
+    'rmax_4': 'Rmax_4',
+    'u200_mean': 'U200',
+    'u200_std': 'U200_sd',
+    'u850_mean': 'U850',
+    'u850_std': 'U850_sd',
+    'v200_mean': 'V200',
+    'v200_std': 'V200_sd',
+    'v850_mean': 'V850',
+    'v850_std': 'V850_sd',
+    'warm_core_diff_200_850': 'WC_diff',
+    'warm_core_pct_200_850': 'WC_pct',
+    'shear_u': 'SHR_u',
+    'shear_v': 'SHR_v',
+    'shear': 'SHR'
+}
 
 
 def plot_scatter(
     predictions_df: pd.DataFrame,
     output_path: str,
-    figsize: tuple = (8, 8),
+    n_features: int = None,
+    figsize: tuple = (6, 6),
     dpi: int = 300
 ) -> Dict:
     """
@@ -41,64 +74,53 @@ def plot_scatter(
     rmse = np.sqrt(np.mean((actual - predicted) ** 2))
     mae = np.mean(np.abs(actual - predicted))
     
+    # Auto select color based on feature count
+    if n_features is None:
+        color = '#2E86AB' # blue
+    elif n_features <= 10:
+        color = '#E63946' # red
+    elif n_features <= 25:
+        color = '#2A9D8F' # green
+    else:
+        color = '#457B9D' # blue
+    
     # Create figure
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=figsize)
     
-    # Calculate density for coloring
-    xy = np.vstack([actual, predicted])
-    try:
-        density = stats.gaussian_kde(xy)(xy)
-        idx = density.argsort()
-        actual_sorted = actual[idx]
-        predicted_sorted = predicted[idx]
-        density_sorted = density[idx]
-        
-        scatter = ax.scatter(
-            actual_sorted,
-            predicted_sorted,
-            c=density_sorted,
-            cmap='viridis',
-            s=25,
-            alpha=0.7,
-            edgecolors='none'
-        )
-        cbar = plt.colorbar(scatter, ax=ax, shrink=0.8, pad=0.02)
-        cbar.set_label('Density', fontsize=12, fontweight='bold')
-    except:
-        ax.scatter(
-            actual,
-            predicted,
-            c='#2E86AB',
-            s=25,
-            alpha=0.6,
-            edgecolors='none'
-        )
+    # Scatter plot
+    ax.scatter(
+        actual,
+        predicted,
+        c=color,
+        s=25,
+        alpha=0.7,
+        edgecolors='none'
+    )
     
     # 1:1 line
     min_val = min(actual.min(), predicted.min())
     max_val = max(actual.max(), predicted.max())
     padding = (max_val - min_val) * 0.05
     line_range = [min_val - padding, max_val + padding]
-    
-    ax.plot(line_range, line_range, 'k--', linewidth=2, alpha=0.8, label='1:1 Line')
+
+    ax.plot(line_range, line_range, 'k--', linewidth=2, alpha=0.8)
     
     # Axis limits
     ax.set_xlim(line_range)
     ax.set_ylim(line_range)
     
     # Labels
-    ax.set_xlabel('Observed R34 (km)', fontsize=14, fontweight='bold')
-    ax.set_ylabel('Predicted R34 (km)', fontsize=14, fontweight='bold')
-    
-    # Legend
-    ax.legend(loc='lower right', fontsize=11, framealpha=0.9)
+    ax.set_xlabel('Observed R34 (km)', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Predicted R34 (km)', fontsize=18, fontweight='bold')
     
     # Square aspect
     ax.set_aspect('equal', adjustable='box')
     
     # Style
-    ax.tick_params(axis='both', which='major', labelsize=12)
+    ax.tick_params(axis='both', which='major', labelsize=14)
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontweight('bold')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     
@@ -119,139 +141,101 @@ def plot_scatter(
 def plot_shap_bar(
     shap_results: Dict,
     output_path: str,
-    figsize: tuple = (10, 8),
-    dpi: int = 300
+    figsize: tuple = (6, 6),
+    feature_labels: Dict = FEATURE_LABELS,
+    dpi: int = 300,
+    top_n: int = 4
 ) -> None:
     """
     Create bar plot for global feature importance.
+    Shows top N features + average of remaining features as "Others".
     
     Args:
         shap_results: Dictionary from compute_shap_values_lstm
         output_path: Path to save figure
-        figsize: Figure size
+        figsize: Figure size (default matches scatter plot)
+        feature_labels: Dict mapping feature names to short labels
         dpi: Resolution
+        top_n: Number of top features to show (default 4)
     """
     importance_df = shap_results['importance_df'].copy()
+    n_features = len(importance_df)
+    
+    # Auto select color based on feature count (same as scatter plot)
+    if n_features <= 10:
+        color = '#E63946'  # red
+    elif n_features <= 25:
+        color = '#2A9D8F'  # green/teal
+    else:
+        color = '#457B9D'  # blue
     
     # Convert feature names to lowercase
     importance_df['feature'] = importance_df['feature'].str.lower()
     
+    # Apply short labels if provided
+    if feature_labels:
+        importance_df['feature'] = importance_df['feature'].map(
+            lambda x: feature_labels.get(x, x)
+        )
+    
+    # Get top N features and calculate "Others" (average of remaining)
+    if len(importance_df) > top_n:
+        top_df = importance_df.head(top_n).copy()
+        others_avg = importance_df.iloc[top_n:]['importance'].mean()
+        others_row = pd.DataFrame({'feature': ['Others'], 'importance': [others_avg]})
+        plot_df = pd.concat([top_df, others_row], ignore_index=True)
+    else:
+        plot_df = importance_df.copy()
+    
+    # Keep order: most important first (rank 1, 2, 3, 4, Others)
+    features = plot_df['feature'].values
+    importance = plot_df['importance'].values
+    n_bars = len(features)
+    
+    # Color scheme: main color for features, gray for "Others"
+    colors = [color] * n_bars
+    if 'Others' in features:
+        others_idx = list(features).index('Others')
+        colors[others_idx] = '#888888'
+    
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=figsize)
     
-    # Reverse for bottom-to-top display
-    features = importance_df['feature'].values[::-1]
-    importance = importance_df['importance'].values[::-1]
+    # Set consistent margins for all plots
+    fig.subplots_adjust(left=0.18, right=0.95, top=0.92, bottom=0.15)
     
-    # Color gradient
-    colors = plt.cm.Blues(np.linspace(0.4, 0.9, len(features)))[::-1]
+    # Vertical bar plot
+    bars = ax.bar(features, importance, color=colors, edgecolor='navy',
+                  linewidth=0.5, width=0.6)
     
-    bars = ax.barh(features, importance, color=colors, edgecolor='navy',
-                   linewidth=0.5, height=0.7)
-    
-    # Value labels
+    # Value labels on top of bars
     for bar, val in zip(bars, importance):
-        ax.text(bar.get_width() + importance.max() * 0.02,
-                bar.get_y() + bar.get_height() / 2,
-                f'{val:.4f}', va='center', ha='left',
-                fontsize=10, fontweight='bold')
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + importance.max() * 0.02,
+                f'{val:.4f}', ha='center', va='bottom',
+                fontsize=12, fontweight='bold')
     
-    ax.set_xlabel('Mean |SHAP Value|', fontsize=14, fontweight='bold')
-    ax.set_ylabel('Feature', fontsize=14, fontweight='bold')
+    # Labels - match scatter plot style (fontsize=18, bold)
+    ax.set_xlabel('Feature', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Mean |SHAP Value|', fontsize=18, fontweight='bold')
     
-    ax.tick_params(axis='both', which='major', labelsize=12)
-    ax.tick_params(axis='y', labelsize=11)
+    # Tick params - match scatter plot style (labelsize=14, bold)
+    ax.tick_params(axis='both', which='major', labelsize=14)
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontweight('bold')
+    
+    # Format y-axis to have consistent width (always show 2 decimal places)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.2f}'))
+    
+    # Bold y-axis offset text (scientific notation)
+    ax.yaxis.get_offset_text().set_fontsize(14)
+    ax.yaxis.get_offset_text().set_fontweight('bold')
+    
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.set_xlim(0, importance.max() * 1.2)
+    ax.set_ylim(0, importance.max() * 1.15)
     
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=dpi, bbox_inches='tight', facecolor='white')
+    plt.savefig(output_path, dpi=dpi, facecolor='white')
     plt.close()
     
     print(f"[Plot] Saved SHAP bar plot to: {output_path}")
-
-
-def plot_shap_heatmap(
-    shap_results: Dict,
-    output_path: str,
-    figsize: tuple = (14, 8),
-    dpi: int = 300,
-    max_time_steps: int = None,
-    min_valid_samples: int = 5,
-    time_interval: int = 6
-) -> None:
-    """
-    Create heatmap showing feature importance over time.
-    
-    Args:
-        shap_results: Dictionary from compute_shap_values_lstm
-        output_path: Path to save figure
-        figsize: Figure size
-        dpi: Resolution
-        max_time_steps: Maximum number of time steps to show
-        min_valid_samples: Minimum valid samples required for a time step
-        time_interval: Hours between each time step (default 6)
-    """
-    temporal_df = shap_results['temporal_importance'].copy()
-    
-    # Convert column names (feature names) to lowercase
-    temporal_df.columns = temporal_df.columns.str.lower()
-    
-    mask = shap_results['mask']
-    
-    # Count valid samples at each time step
-    valid_counts = mask.sum(axis=0)
-    
-    # Filter time steps with enough valid samples
-    valid_timesteps = valid_counts >= min_valid_samples
-    temporal_df = temporal_df[valid_timesteps]
-    
-    # Limit time steps if specified
-    if max_time_steps and len(temporal_df) > max_time_steps:
-        temporal_df = temporal_df.iloc[:max_time_steps, :]
-    
-    # Remove all-zero rows
-    non_zero = temporal_df.sum(axis=1) > 0
-    temporal_df = temporal_df[non_zero]
-    
-    # Transpose: features as rows, time as columns
-    heatmap_data = temporal_df.T
-    
-    # Rename columns to actual hours
-    n_steps = len(heatmap_data.columns)
-    heatmap_data.columns = [i * time_interval for i in range(1, n_steps + 1)]
-    
-    plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=figsize)
-    
-    # Create heatmap
-    sns.heatmap(
-        heatmap_data,
-        ax=ax,
-        cmap='YlOrRd',
-        annot=False,
-        linewidths=0.5,
-        cbar_kws={'label': 'Mean |SHAP Value|'}
-    )
-    
-    # Style colorbar label
-    cbar = ax.collections[0].colorbar
-    cbar.ax.yaxis.label.set_fontsize(12)
-    cbar.ax.yaxis.label.set_fontweight('bold')
-    cbar.ax.tick_params(labelsize=10)
-    
-    ax.set_xlabel('Time (hours)', fontsize=14, fontweight='bold')
-    ax.set_ylabel('Feature', fontsize=14, fontweight='bold')
-    
-    ax.tick_params(axis='both', which='major', labelsize=11)
-    
-    # Rotate x-axis labels if many time steps
-    if n_steps > 15:
-        ax.set_xticks(ax.get_xticks()[::2])
-    
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=dpi, bbox_inches='tight', facecolor='white')
-    plt.close()
-    
-    print(f"[Plot] Saved SHAP heatmap to: {output_path}")

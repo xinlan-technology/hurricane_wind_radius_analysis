@@ -67,7 +67,7 @@ class LSTMRegressor(nn.Module):
     
     def forward_for_shap(self, x):
         """
-        Simplified forward for SHAP analysis (no lengths parameter).
+        Forward pass for SHAP analysis.
         Assumes all timesteps are valid (no packing).
         
         Args:

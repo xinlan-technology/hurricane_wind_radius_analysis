@@ -3,7 +3,8 @@ Data Loading Module
 - Load CSV and filter hurricanes with >= min_observations
 - Build X_sequences, y_sequences, hurricane_sids
 - Create random trainval/test split
-- Fit scaler on trainval, transform all sequences
+- Scale sequences
+- Pad sequences for SHAP analysis
 """
 
 import pandas as pd
@@ -105,21 +106,25 @@ def create_random_split(
 
 def scale_sequences(
     X_sequences: List[np.ndarray],
-    trainval_indices: List[int]
+    fit_indices: List[int]
 ) -> Tuple[List[np.ndarray], StandardScaler]:
     """
-    Fit scaler on trainval data, transform ALL sequences.
+    Fit scaler on specified indices, transform ALL sequences.
+    
+    Args:
+        X_sequences: List of feature arrays (unscaled)
+        fit_indices: Indices used to fit the scaler
     
     Returns:
         X_sequences_scaled: All sequences scaled
         scaler: Fitted StandardScaler
     """
-    # Fit only on training data
-    train_features = np.vstack([X_sequences[i] for i in trainval_indices])
-    print(f"[Scale] Training set shape for standardization: {train_features.shape}")
+    # Fit scaler only on specified indices
+    fit_features = np.vstack([X_sequences[i] for i in fit_indices])
+    print(f"[Scale] Fitting scaler on {len(fit_indices)} sequences, shape: {fit_features.shape}")
     
     scaler = StandardScaler()
-    scaler.fit(train_features)
+    scaler.fit(fit_features)
     
     # Transform all sequences
     X_sequences_scaled = []
@@ -131,7 +136,8 @@ def scale_sequences(
 
 def pad_sequences_for_shap(
     X_sequences: List[np.ndarray],
-    indices: List[int] = None
+    indices: List[int] = None,
+    max_len: int = None
 ) -> Tuple[np.ndarray, np.ndarray, List[int]]:
     """
     Pad variable-length sequences to fixed length for LSTM SHAP analysis.
@@ -150,7 +156,8 @@ def pad_sequences_for_shap(
     
     sequences = [X_sequences[i] for i in indices]
     lengths = [len(seq) for seq in sequences]
-    max_len = max(lengths)
+    if max_len is None:
+        max_len = max(lengths)
     n_features = sequences[0].shape[1]
     
     # Create padded array
@@ -158,8 +165,8 @@ def pad_sequences_for_shap(
     mask = np.zeros((len(sequences), max_len))
     
     for i, seq in enumerate(sequences):
-        seq_len = len(seq)
-        X_padded[i, :seq_len, :] = seq
+        seq_len = min(len(seq), max_len) 
+        X_padded[i, :seq_len, :] = seq[:seq_len]
         mask[i, :seq_len] = 1
     
     print(f"[SHAP] Padded to shape: {X_padded.shape}, max_len={max_len}")

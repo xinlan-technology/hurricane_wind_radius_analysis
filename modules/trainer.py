@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from sklearn.model_selection import KFold
+from sklearn.preprocessing import StandardScaler
 from typing import List, Dict, Tuple
 
 from .model import LSTMRegressor, HurricaneDataset, collate_fn, masked_mse_loss
@@ -100,7 +101,7 @@ def train_and_evaluate(model, train_loader, val_loader, optimizer, device, max_e
 
 
 def hyperparameter_search(
-    X_sequences_scaled: List[np.ndarray],
+    X_sequences: List[np.ndarray],
     y_sequences: List[np.ndarray],
     trainval_indices: List[int],
     input_size: int,
@@ -152,10 +153,15 @@ def hyperparameter_search(
             train_indices = [trainval_indices[i] for i in train_rel]
             val_indices = [trainval_indices[i] for i in val_rel]
             
-            # Create datasets
-            X_train = [X_sequences_scaled[i] for i in train_indices]
+            # Fit scaler only on this fold's training data (prevent data leakage)
+            train_features = np.vstack([X_sequences[i] for i in train_indices])
+            scaler = StandardScaler()
+            scaler.fit(train_features)
+            
+            # Scale train and val separately using this fold's scaler
+            X_train = [scaler.transform(X_sequences[i]) for i in train_indices]
             y_train = [y_sequences[i] for i in train_indices]
-            X_val = [X_sequences_scaled[i] for i in val_indices]
+            X_val = [scaler.transform(X_sequences[i]) for i in val_indices]
             y_val = [y_sequences[i] for i in val_indices]
             
             train_dataset = HurricaneDataset(X_train, y_train)

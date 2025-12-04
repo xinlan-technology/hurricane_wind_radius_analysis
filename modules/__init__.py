@@ -22,8 +22,7 @@ from .trainer import (
 )
 from .visualization import (
     plot_scatter,       
-    plot_shap_bar,      
-    plot_shap_heatmap   
+    plot_shap_bar 
 )
 from .shap_analysis import (
     compute_shap_values_lstm,  
@@ -44,6 +43,5 @@ __all__ = [
     'evaluate_on_test',
     'plot_scatter',
     'plot_shap_bar',
-    'plot_shap_heatmap',
-    'compute_shap_values_lstm',
+    'compute_shap_values_lstm'
 ]

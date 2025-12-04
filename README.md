@@ -1,9 +1,8 @@
-# Hurricane wind radius prediction using LSTM
+# Hurricane Wind Radius Prediction using LSTM
 
 This repository provides a deep learning framework for predicting hurricane wind radius (R34) using LSTM neural networks with SHAP-based interpretability analysis. The project evaluates different feature groups to understand the contribution of meteorological variables to wind radius prediction.
 
 ## 📁 Project Structure
-
 ```
 .
 ├── modules/
@@ -16,9 +15,7 @@ This repository provides a deep learning framework for predicting hurricane wind
 ├── data/
 │   └── df_34out.csv             # Hurricane dataset
 ├── outputs/                      # Model outputs and figures (generated)
-├── run_group1_era5.py           # Experiment: ERA5 variables (23 features)
-├── run_group2_basic.py          # Experiment: Basic variables (7 features)
-├── run_group3_combined.py       # Experiment: Combined variables (28 features)
+├── run_all_experiments.py       # Main script: runs all 3 experiments
 ├── requirements.txt
 └── README.md
 ```
@@ -34,7 +31,7 @@ This repository provides a deep learning framework for predicting hurricane wind
 | Thermal Structure | warm_core_diff_200_850, warm_core_pct_200_850 |
 | Wind Shear | shear_u, shear_v, shear |
 
-### Group 2: Basic Variables (7 features)
+### Group 2: Observation Variables (7 features)
 | Category | Features |
 |----------|----------|
 | Location | LAT, LON |
@@ -61,14 +58,27 @@ Place your hurricane dataset (`df_34out.csv`) in the `data/` folder.
 
 ### Run Experiments
 ```bash
-# Run ERA5 variables experiment
-python run_group1_era5.py
+# Run all 3 experiments
+python run_all_experiments.py
 
-# Run basic variables experiment
-python run_group2_basic.py
+# Run specific group(s)
+python run_all_experiments.py --groups group1_era5
+python run_all_experiments.py --groups group2_obs group3_combined
 
-# Run combined variables experiment
-python run_group3_combined.py
+# Custom paths
+python run_all_experiments.py --data_path /path/to/data.csv --output_dir /path/to/output/
+```
+
+### Google Colab Usage
+```python
+# Mount Google Drive
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Run experiments
+!python run_all_experiments.py \
+    --data_path '/content/drive/MyDrive/Hurricane Data/df_34out.csv' \
+    --output_dir '/content/drive/MyDrive/Hurricane Data/'
 ```
 
 ## 📊 Output Structure
@@ -78,27 +88,58 @@ After execution, results will be saved in `outputs/`:
 | File | Description |
 |------|-------------|
 | `model_{exp_name}.pth` | Trained model weights |
+| `scaler_{exp_name}.pkl` | Fitted StandardScaler for deployment |
 | `predictions_{exp_name}.csv` | Test set predictions |
 | `scatter_{exp_name}.png` | Observed vs Predicted scatter plot |
 | `feature_importance_{exp_name}.csv` | SHAP feature importance |
 | `shap_bar_{exp_name}.png` | SHAP bar plot |
-| `shap_heatmap_{exp_name}.png` | Temporal SHAP heatmap |
 
 ## 📈 Key Features
 
+- **Unified Script**: Single `run_all_experiments.py` runs all 3 feature groups
 - **LSTM Architecture**: Sequence modeling for hurricane temporal evolution
 - **Hyperparameter Search**: Grid search with 5-fold cross-validation
-- **SHAP Interpretability**: Global and temporal feature importance analysis
-- **Visualization Suite**: Scatter plots, bar charts, and heatmaps
+- **SHAP Interpretability**: Global feature importance analysis
+- **Visualization Suite**: Scatter plots and bar charts
+- **Reproducibility**: Global random seed for consistent results
+- **Deployment Ready**: Saves both model weights and scaler
 
 ## 🔬 Model Configuration
 
+### Hyperparameter Search Space
 | Parameter | Search Space |
 |-----------|--------------|
 | Hidden Size | 64, 128, 256 |
 | Num Layers | 2, 3, 4 |
 | Dropout | 0.0, 0.1, 0.3, 0.5 |
 | Batch Size | 8, 16 |
+
+### Training Settings
+| Parameter | Value |
+|-----------|-------|
+| Test Ratio | 0.1 |
+| K-Fold Splits | 5 |
+| Max Epochs | 400 |
+| Early Stopping Patience | 30 |
+| Random Seed | 42 |
+
+## 🔄 Model Deployment
+
+To use a trained model for prediction on new data:
+```python
+import torch
+import joblib
+from modules import LSTMRegressor
+
+# Load scaler and model
+scaler = joblib.load('outputs/scaler_group1_era5.pkl')
+model = LSTMRegressor(input_size=23, hidden_size=256, num_layers=2, dropout=0.0)
+model.load_state_dict(torch.load('outputs/model_group1_era5.pth'))
+model.eval()
+
+# Preprocess new data
+X_new_scaled = scaler.transform(X_new)
+```
 
 ## 📈 Applications
 

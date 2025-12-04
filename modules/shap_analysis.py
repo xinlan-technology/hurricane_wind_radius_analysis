@@ -2,7 +2,6 @@
 SHAP Analysis Module
 - compute_shap_values_lstm: Compute SHAP values for LSTM model
 - aggregate_shap_to_global: Aggregate 3D SHAP values to global feature importance
-- get_temporal_importance: Get feature importance at each time step
 """
 
 import numpy as np
@@ -13,6 +12,14 @@ import torch.nn as nn
 from typing import List, Dict
 import random
 
+class LSTMWrapper(nn.Module):
+    """Wrapper for SHAP DeepExplainer compatibility."""
+    def __init__(self, lstm_model):
+        super().__init__()
+        self.model = lstm_model
+    
+    def forward(self, x):
+        return self.model.forward_for_shap(x)
 
 def compute_shap_values_lstm(
     model: nn.Module,
@@ -25,7 +32,7 @@ def compute_shap_values_lstm(
     n_background: int = 100
 ) -> Dict:
     """
-    Compute SHAP values for LSTM model using GradientExplainer.
+    Compute SHAP values for LSTM model using DeepExplainer.
     
     Args:
         model: Trained LSTMRegressor model
@@ -38,12 +45,15 @@ def compute_shap_values_lstm(
         n_background: Number of background samples
         
     Returns:
-        Dictionary with shap_values, mask, importance_df, temporal_importance, etc.
+        Dictionary with shap_values, mask, importance_df and other metadata
     """
     print("[SHAP] Computing SHAP values for LSTM model...")
     
-    model.eval()
+    torch.backends.cudnn.enabled = False
+
+    model.train()
     model.to(device)
+    model.lstm.dropout = 0.0
     
     # Select background samples
     np.random.seed(42)
@@ -58,19 +68,23 @@ def compute_shap_values_lstm(
     background_tensor = torch.tensor(background, dtype=torch.float32).to(device)
     X_test_tensor = torch.tensor(X_test_padded, dtype=torch.float32).to(device)
     
-    # GradientExplainer
-    explainer = shap.GradientExplainer(model.forward_for_shap, background_tensor)
-    shap_values = explainer.shap_values(X_test_tensor)
+    # Use LSTMWrapper for DeepExplainer compatibility
+    wrapper = LSTMWrapper(model).to(device)
+    explainer = shap.DeepExplainer(wrapper, background_tensor)
+    shap_values = explainer.shap_values(X_test_tensor, check_additivity=False)
     
-    # Handle output format
-    # GradientExplainer returns list of length=time when output is (batch, time)
-    # Each element is (n_samples, n_features)
-    # Stack to (n_samples, max_len, n_features)
+    # Handle 3D case: (n_samples, input_time, n_features)
     if isinstance(shap_values, list):
-        shap_values = np.stack(shap_values, axis=1)
-        print(f"[SHAP] Stacked {shap_values.shape[1]} time steps")
+        stacked = np.stack(shap_values, axis=0)
+        shap_values = np.mean(stacked, axis=0)
+        print(f"[SHAP] Averaged {stacked.shape[0]} output timesteps, final shape: {shap_values.shape}")
     elif torch.is_tensor(shap_values):
         shap_values = shap_values.cpu().numpy()
+    
+    # Handle 4D case: (n_samples, input_time, n_features, output_time)
+    if shap_values.ndim == 4:
+        shap_values = np.mean(shap_values, axis=-1)
+        print(f"[SHAP] Averaged 4D output, final shape: {shap_values.shape}")
     
     print(f"[SHAP] SHAP values shape: {shap_values.shape}")
     
@@ -81,9 +95,8 @@ def compute_shap_values_lstm(
     
     # Compute global importance
     importance_df = aggregate_shap_to_global(shap_values, mask_test, feature_names)
-    
-    # Compute temporal importance
-    temporal_importance = get_temporal_importance(shap_values, mask_test, feature_names)
+
+    torch.backends.cudnn.enabled = True
     
     return {
         'shap_values': shap_values,
@@ -91,8 +104,7 @@ def compute_shap_values_lstm(
         'mask': mask_test,
         'lengths': lengths_test,
         'feature_names': feature_names,
-        'importance_df': importance_df,
-        'temporal_importance': temporal_importance
+        'importance_df': importance_df
     }
 
 
@@ -132,34 +144,3 @@ def aggregate_shap_to_global(
         print(f"  {row['feature']}: {row['importance']:.4f}")
     
     return importance_df
-
-
-def get_temporal_importance(
-    shap_values: np.ndarray,
-    mask: np.ndarray,
-    feature_names: List[str]
-) -> pd.DataFrame:
-    """
-    Get feature importance at each time step.
-    
-    Args:
-        shap_values: (n_samples, max_len, n_features)
-        mask: (n_samples, max_len)
-        feature_names: List of feature names
-        
-    Returns:
-        DataFrame with shape (max_len, n_features)
-    """
-    n_samples, max_len, n_features = shap_values.shape
-    
-    temporal_importance = np.zeros((max_len, n_features))
-    
-    for t in range(max_len):
-        valid_samples = mask[:, t] == 1
-        if valid_samples.sum() > 0:
-            temporal_importance[t, :] = np.abs(shap_values[valid_samples, t, :]).mean(axis=0)
-    
-    df = pd.DataFrame(temporal_importance, columns=feature_names)
-    df.index.name = 'time_step'
-    
-    return df
