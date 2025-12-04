@@ -1,4 +1,4 @@
-# Hurricane Wind Radius Prediction using LSTM
+# Hurricane wind radius prediction using LSTM and SHAP
 
 This repository provides a deep learning framework for predicting hurricane wind radius (R34) using LSTM neural networks with SHAP-based interpretability analysis. The project evaluates different feature groups to understand the contribution of meteorological variables to wind radius prediction.
 
