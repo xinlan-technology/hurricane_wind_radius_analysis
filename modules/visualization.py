@@ -76,13 +76,13 @@ def plot_scatter(
     
     # Auto select color based on feature count
     if n_features is None:
-        color = '#2E86AB' # blue
+        color = '#2E86AB' # blue - Combined features
     elif n_features <= 10:
-        color = '#E63946' # red
+        color = '#E63946'  # red - Observed features
     elif n_features <= 25:
-        color = '#2A9D8F' # green
+        color = '#F4A261'  # orange - ERA5 features
     else:
-        color = '#457B9D' # blue
+        color = '#2A9D8F'  # teal - Combined features
     
     # Create figure
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -111,8 +111,8 @@ def plot_scatter(
     ax.set_ylim(line_range)
     
     # Labels
-    ax.set_xlabel('Observed R34 (km)', fontsize=18, fontweight='bold')
-    ax.set_ylabel('Predicted R34 (km)', fontsize=18, fontweight='bold')
+    ax.set_xlabel('Observed R34 [km]', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Predicted R34 [km]', fontsize=18, fontweight='bold')
     
     # Square aspect
     ax.set_aspect('equal', adjustable='box')
@@ -163,11 +163,11 @@ def plot_shap_bar(
     
     # Auto select color based on feature count (same as scatter plot)
     if n_features <= 10:
-        color = '#E63946'  # red
+        color = '#E63946'  # red - Observed features
     elif n_features <= 25:
-        color = '#2A9D8F'  # green/teal
+        color = '#F4A261'  # orange - ERA5 features
     else:
-        color = '#457B9D'  # blue
+        color = '#2A9D8F'  # teal - Combined features
     
     # Convert feature names to lowercase
     importance_df['feature'] = importance_df['feature'].str.lower()
