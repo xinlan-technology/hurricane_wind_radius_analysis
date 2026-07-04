@@ -1,121 +1,65 @@
-# Hurricane wind radius prediction using LSTM and SHAP
+# Hurricane wind radius (R34) — 6h vs 1h LSTM with grouped SHAP
 
-This repository provides a deep learning framework for predicting hurricane wind radius (R34) using LSTM neural networks with SHAP-based interpretability analysis. The project evaluates different feature groups to understand the contribution of meteorological variables to wind radius prediction.
+Predicts hurricane 34-kt wind radius (R34) at 6-hour best-track points and compares
+two models, then attributes each model's skill to three physics-based feature groups
+via grouped SHAP.
 
-## 📁 Project Structure
-```
-.
-├── modules/
-│   ├── __init__.py              # Module exports
-│   ├── data_loader.py           # Data loading and preprocessing
-│   ├── model.py                 # LSTM model definition
-│   ├── trainer.py               # Training and hyperparameter search
-│   ├── shap_analysis.py         # SHAP value computation
-│   └── visualization.py         # Plotting functions
-├── data/
-│   └── df_34out.csv             # Hurricane dataset
-├── outputs/                     # Model outputs and figures
-├── run_all_experiments.py       # Main script: runs all 3 experiments
-├── requirements.txt
-└── README.md
-```
+- **6h model** (`r34_6h.csv`): every timestep is a labeled best-track observation.
+- **1h model** (`r34_1h.csv`): the full 1-hour sequence is fed to the LSTM, but
+  the **loss and evaluation are computed only at the 6h points** (`raw_data==True`). The
+  5 intermediate hourly ERA5 steps provide sub-6h context. The 6-hourly best-track
+  observations are fed only at the 6h points — intermediate steps are masked to zero
+  and flagged by an `obs_flag` channel — while sporadic hourly-ERA5 gaps (~0.1%) are
+  linearly interpolated within each storm. Standardization statistics come only from
+  real values (best-track obs from the 6h points, ERA5 from all hours; `obs_flag`
+  stays 0/1). Both models are evaluated on the **same** valid 6h test storms.
 
-## 📋 Feature Groups
+## Feature groups (for grouped SHAP)
 
-### Group 1: ERA5 Variables (23 features)
-| Category | Features |
-|----------|----------|
-| Location | LAT, LON |
-| Wind Structure | uv_max, rmax, rmax_avg, rmax_avg_adj, rmax_1, rmax_2, rmax_3, rmax_4 |
-| Upper/Lower Level Winds | u200_mean, u200_std, u850_mean, u850_std, v200_mean, v200_std, v850_mean, v850_std |
-| Thermal Structure | warm_core_diff_200_850, warm_core_pct_200_850 |
-| Wind Shear | shear_u, shear_v, shear |
+50 features in three physics groups (**8 / 24 / 18** features; the grouping was
+recovered from the Excel header colours). A separate `obs_flag` channel — the 51st
+model input — gates the masked obs and is in **no** SHAP group. Group colours below
+match the SHAP bar charts (colour-blind-safe):
 
-### Group 2: Observation Variables (7 features)
-| Category | Features |
-|----------|----------|
-| Location | LAT, LON |
-| Storm Characteristics | DIST2LAND, USA_WIND, USA_SSHS, STORM_SPEED, STORM_DIR |
+| Group | Meaning |
+|-------|---------|
+| 🟪 Location & Motion | DIST2LAND, USA_LAT/LON, STORM_SPEED/DIR, era_min_lat/lon, distance_dev |
+| 🟧 Intensity & Inner-core | USA_WIND/PRES/SSHS, uv_max, rmax*, u850/v850, warm_core, era_min_pressure + `*_mslp_center` twins |
+| 🟩 Large-scale Environment | u200/v200, shear, rh500 + `*_mslp_center` twins |
 
-### Group 3: Combined (28 features)
-All features from Group 1 + Group 2
+SHAP is computed **per group** (exact permutation Shapley over all 3!=6 orderings),
+because storm-center and `*_mslp_center` features are ~0.99 correlated and per-feature
+SHAP would split their importance. Each group is revealed as a whole — from a baseline
+(the per-feature mean over labelled 6h steps) to its real values — in every ordering, and
+its averaged marginal change in predicted R34 is the group's Shapley value; importance is
+the mean |SHAP| in km at the 6h test points. Only forward passes are used, so it applies
+directly to the masked LSTM.
 
-## 🔧 Setup and Installation
+## Run
 
-### Prerequisites
-- Python 3.8+
-- CUDA-compatible GPU (recommended)
+Everything is in a single self-contained script. **Edit only the `CONFIG` block at the
+top** (the three data/output paths) — nothing else.
 
-### Install Dependencies
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt        # torch, numpy, pandas, scikit-learn, matplotlib
+python r34_6h_vs_1h.py
 ```
 
-## 🚀 Usage
-
-### Data Preparation
-Place your hurricane dataset (`df_34out.csv`) in the `data/` folder.
-
-### Run Experiments
-```bash
-# Run all 3 experiments
-python run_all_experiments.py
-
-# Run specific group(s)
-python run_all_experiments.py --groups group1_era5
-python run_all_experiments.py --groups group2_obs group3_combined
-
-# Custom paths
-python run_all_experiments.py --data_path /path/to/data.csv --output_dir /path/to/output/
+On Colab:
+```python
+!pip install torch numpy pandas scikit-learn matplotlib
+# set DATA_6H / DATA_1H / OUTPUT_DIR in the CONFIG block to your Drive paths, then:
+!python r34_6h_vs_1h.py
 ```
 
-## 📊 Output Structure
-
-After execution, results will be saved in `outputs/`:
+## Outputs (`outputs/`)
 
 | File | Description |
 |------|-------------|
-| `model_{exp_name}.pth` | Trained model weights |
-| `scaler_{exp_name}.pkl` | Fitted StandardScaler for deployment |
-| `predictions_{exp_name}.csv` | Test set predictions |
-| `scatter_{exp_name}.png` | Observed vs Predicted scatter plot |
-| `feature_importance_{exp_name}.csv` | SHAP feature importance |
-| `shap_bar_{exp_name}.png` | SHAP bar plot |
+| `scatter_6h.png`, `scatter_1h.png` | Observed vs predicted R34 (with R²/RMSE/MAE) |
+| `shap_6h.png`, `shap_1h.png` | Grouped-SHAP importance of the three feature groups |
+| `predictions_6h.csv`, `predictions_1h.csv` | Test-storm predictions at labeled 6h points |
+| `shap_6h.csv`, `shap_1h.csv` | Grouped-SHAP values used in the bar plots |
+| `metrics_summary.csv` | R²/RMSE/MAE comparison table |
 
-## 📈 Key Features
-
-- **Unified Script**: Single `run_all_experiments.py` runs all 3 feature groups
-- **LSTM Architecture**: Sequence modeling for hurricane temporal evolution
-- **Hyperparameter Search**: Grid search with 5-fold cross-validation
-- **SHAP Interpretability**: Global feature importance analysis
-- **Visualization Suite**: Scatter plots and bar charts
-- **Reproducibility**: Global random seed for consistent results
-- **Deployment Ready**: Saves both model weights and scaler
-
-## 🔬 Model Configuration
-
-### Hyperparameter Search Space
-| Parameter | Search Space |
-|-----------|--------------|
-| Hidden Size | 64, 128, 256 |
-| Num Layers | 2, 3, 4 |
-| Dropout | 0.0, 0.1, 0.3, 0.5 |
-| Batch Size | 8, 16 |
-
-### Training Settings
-| Parameter | Value |
-|-----------|-------|
-| Test Ratio | 0.1 |
-| K-Fold Splits | 5 |
-| Max Epochs | 400 |
-| Early Stopping Patience | 30 |
-| Random Seed | 42 |
-
-## 📈 Applications
-
-This toolkit supports hurricane researchers and forecasters in:
-
-- Predicting hurricane wind radius evolution
-- Understanding key meteorological drivers of wind structure
-- Evaluating the contribution of different feature sets
-- Interpreting model predictions through SHAP analysis
+A comparison summary (R²/RMSE/MAE for both models) is printed to the console.
