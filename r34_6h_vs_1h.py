@@ -30,7 +30,7 @@ PATIENCE   = 30
 PARAM_GRID = {             # grid searched with K-fold CV
     "hidden_size": [64, 128, 256],
     "num_layers":  [2, 3, 4],
-    "dropout":     [0.0, 0.1, 0.3, 0.5],
+    "dropout":     [0.0, 0.3],
     "batch_size":  [8, 16],
 }
 # ============================================================================
